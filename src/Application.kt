@@ -45,15 +45,8 @@ open class KtorJWT(val secret: String) {
     fun sign(name: String): String = JWT.create().withClaim("name", name).sign(algorithm)
 }
 
-class User(val name: String, val password: String)
+private val loginInteractor = LoginInteractor()
 
-val users: MutableMap<String, User> = Collections.synchronizedMap(
-    listOf(User("test", "test"))
-        .associateBy { it.name }
-        .toMutableMap()
-)
-
-class LoginRegister(val user: String, val password: String)
 
 ////////////////////////////////////////////////////////////////
 
@@ -81,9 +74,7 @@ fun Application.module(testing: Boolean = false) {
     }
 
     install(StatusPages) {
-        exception<ApplicationExceptions> { exception ->
-            call.processError(exception)
-        }
+        exception<ApplicationExceptions> { call.processError(it) }
     }
 
     routing {
@@ -92,10 +83,13 @@ fun Application.module(testing: Boolean = false) {
         }
 
         post("/login") {
-            val post = call.receive<LoginRegister>()
-            val user = users.getOrPut(post.user) { User(post.user, post.password) }
-            if (user.password != post.password) throw ApplicationExceptions.InvalidCredentialsException()
-            call.respond(mapOf("token" to simpleJwt.sign(user.name)))
+            val post = call.receive<LoginInteractor.LoginRegister>()
+
+            if (loginInteractor.checkCredentials(post)) {
+                call.respond(mapOf("token" to simpleJwt.sign(post.user)))
+            } else {
+                throw ApplicationExceptions.InvalidCredentialsException()
+            }
         }
 
         route("/data") {

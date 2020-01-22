@@ -11,9 +11,12 @@ import io.ktor.auth.Authentication
 import io.ktor.auth.UserIdPrincipal
 import io.ktor.auth.authenticate
 import io.ktor.auth.jwt.jwt
+import io.ktor.features.CORS
 import io.ktor.features.ContentNegotiation
 import io.ktor.features.StatusPages
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
 import io.ktor.jackson.jackson
 import io.ktor.request.receive
 import io.ktor.response.respond
@@ -48,7 +51,6 @@ open class KtorJWT(val secret: String) {
 private val loginInteractor = LoginInteractor()
 
 
-////////////////////////////////////////////////////////////////
 
 fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
 
@@ -71,6 +73,18 @@ fun Application.module(testing: Boolean = false) {
         jackson {
             enable(SerializationFeature.INDENT_OUTPUT)
         }
+    }
+
+    install(CORS) {
+        method(HttpMethod.Options)
+        method(HttpMethod.Get)
+        method(HttpMethod.Post)
+        method(HttpMethod.Put)
+        method(HttpMethod.Delete)
+        method(HttpMethod.Patch)
+        header(HttpHeaders.Authorization)
+        allowCredentials = true
+        anyHost()
     }
 
     install(StatusPages) {

@@ -12,6 +12,7 @@ import io.ktor.auth.UserIdPrincipal
 import io.ktor.auth.authenticate
 import io.ktor.auth.jwt.jwt
 import io.ktor.features.ContentNegotiation
+import io.ktor.features.StatusPages
 import io.ktor.http.ContentType
 import io.ktor.jackson.jackson
 import io.ktor.request.receive
@@ -21,18 +22,20 @@ import io.ktor.routing.get
 import io.ktor.routing.post
 import io.ktor.routing.route
 import io.ktor.routing.routing
+import org.jetbrains.exposed.sql.Database
 import java.util.*
 
-data class Snippet(val text: String)
 
-data class PostSnippet(val snippet: PostSnippet.Text) {
+data class Data(val text: String)
+
+data class PostData(val data: Text) {
     data class Text(val text: String)
 }
 
-val snippets = Collections.synchronizedList(
+private val dataList: MutableList<Data> = Collections.synchronizedList(
     mutableListOf(
-        Snippet("hello"),
-        Snippet("world")
+        Data("my data"),
+        Data("your data")
     )
 )
 
@@ -44,7 +47,7 @@ open class KtorJWT(val secret: String) {
 
 class User(val name: String, val password: String)
 
-val users = Collections.synchronizedMap(
+val users: MutableMap<String, User> = Collections.synchronizedMap(
     listOf(User("test", "test"))
         .associateBy { it.name }
         .toMutableMap()
@@ -77,30 +80,40 @@ fun Application.module(testing: Boolean = false) {
         }
     }
 
+    install(StatusPages) {
+        exception<ApplicationExceptions> { exception ->
+            call.processError(exception)
+        }
+    }
+
     routing {
         get("/") {
-            call.respondText("App!", contentType = ContentType.Text.Plain)
+            call.respondText(APP_NAME, contentType = ContentType.Text.Plain)
         }
 
         post("/login") {
             val post = call.receive<LoginRegister>()
             val user = users.getOrPut(post.user) { User(post.user, post.password) }
-            if (user.password != post.password) error("Invalid credentials")
+            if (user.password != post.password) throw ApplicationExceptions.InvalidCredentialsException()
             call.respond(mapOf("token" to simpleJwt.sign(user.name)))
         }
 
-        route("/snippets") {
+        route("/data") {
             get {
-                call.respond(mapOf("snippets" to synchronized(snippets) { snippets.toList() }))
+                call.respond(mapOf("data" to synchronized(dataList) { dataList.toList() }))
             }
 
             authenticate {
                 post {
-                    val post = call.receive<PostSnippet>()
-                    snippets += Snippet(post.snippet.text)
+                    val post = call.receive<PostData>()
+                    dataList += Data(post.data.text)
                     call.respond(mapOf("OK" to true))
                 }
             }
         }
     }
+}
+
+private fun initDB() {
+    Database.connect(DB_URL, DB_DRIVER)
 }

@@ -1,8 +1,6 @@
 package com.nurlandroid
 
 
-import com.auth0.jwt.JWT
-import com.auth0.jwt.algorithms.Algorithm
 import com.fasterxml.jackson.databind.SerializationFeature
 import io.ktor.application.Application
 import io.ktor.application.call
@@ -20,36 +18,17 @@ import io.ktor.http.HttpMethod
 import io.ktor.jackson.jackson
 import io.ktor.request.receive
 import io.ktor.response.respond
+import io.ktor.response.respondRedirect
 import io.ktor.response.respondText
 import io.ktor.routing.get
 import io.ktor.routing.post
 import io.ktor.routing.route
 import io.ktor.routing.routing
 import org.jetbrains.exposed.sql.Database
-import java.util.*
 
-
-data class Data(val text: String)
-
-data class PostData(val data: Text) {
-    data class Text(val text: String)
-}
-
-private val dataList: MutableList<Data> = Collections.synchronizedList(
-    mutableListOf(
-        Data("my data"),
-        Data("your data")
-    )
-)
-
-open class KtorJWT(val secret: String) {
-    private val algorithm = Algorithm.HMAC256(secret)
-    val verifier = JWT.require(algorithm).build()
-    fun sign(name: String): String = JWT.create().withClaim("name", name).sign(algorithm)
-}
 
 private val loginInteractor = LoginInteractor()
-
+private val dataInteractor = DummyDataInteractor()
 
 
 fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
@@ -58,11 +37,11 @@ fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
 @kotlin.jvm.JvmOverloads
 fun Application.module(testing: Boolean = false) {
 
-    val simpleJwt = KtorJWT("secret-for-jwt")
+    val tokenizer = LoginInteractor.KtorJWT(SECRET_JWT)
 
     install(Authentication) {
         jwt {
-            verifier(simpleJwt.verifier)
+            verifier(tokenizer.verifier)
             validate {
                 UserIdPrincipal(it.payload.getClaim("name").asString())
             }
@@ -100,7 +79,8 @@ fun Application.module(testing: Boolean = false) {
             val post = call.receive<LoginInteractor.LoginRegister>()
 
             if (loginInteractor.checkCredentials(post)) {
-                call.respond(mapOf("token" to simpleJwt.sign(post.user)))
+                call.respond(mapOf("token" to tokenizer.sign(post.user)))
+                call.respondRedirect("/", permanent = false)
             } else {
                 throw ApplicationExceptions.InvalidCredentialsException()
             }
@@ -108,13 +88,15 @@ fun Application.module(testing: Boolean = false) {
 
         route("/data") {
             get {
-                call.respond(mapOf("data" to synchronized(dataList) { dataList.toList() }))
+                call.respond(mapOf("data" to synchronized(dataInteractor.getDataList()) {
+                    dataInteractor.getDataList().toList()
+                }))
             }
 
             authenticate {
                 post {
-                    val post = call.receive<PostData>()
-                    dataList += Data(post.data.text)
+                    val post = call.receive<DummyDataInteractor.PostData>()
+                    dataInteractor.putData(post.data.text)
                     call.respond(mapOf("OK" to true))
                 }
             }

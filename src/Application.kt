@@ -2,7 +2,6 @@ package com.nurlandroid
 
 
 import com.fasterxml.jackson.databind.SerializationFeature
-import com.nurlandroid.temp.AnswersInteractor
 import io.ktor.application.Application
 import io.ktor.application.call
 import io.ktor.application.install
@@ -30,8 +29,6 @@ import org.jetbrains.exposed.sql.Database
 
 private val loginInteractor = LoginInteractor()
 private val dataInteractor = DummyDataInteractor()
-
-private val answersInteractor = AnswersInteractor()
 
 
 fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
@@ -87,12 +84,6 @@ fun Application.module(testing: Boolean = false) {
             } else {
                 throw ApplicationExceptions.InvalidCredentialsException()
             }
-        }
-
-        post("/sendAnswers") {
-            val jsonAnswers = call.receive<String>()
-
-            call.respondText(answersInteractor.processAnswers(jsonAnswers))
         }
 
         route("/data") {

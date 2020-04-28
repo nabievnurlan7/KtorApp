@@ -2,8 +2,9 @@ package com.nurlandroid
 
 
 import com.fasterxml.jackson.databind.SerializationFeature
-import com.nurlandroid.temp.AnswersInteractor
+import com.nurlandroid.di.mainModule
 import io.ktor.application.Application
+import io.ktor.application.ApplicationCall
 import io.ktor.application.call
 import io.ktor.application.install
 import io.ktor.auth.Authentication
@@ -21,17 +22,10 @@ import io.ktor.request.receive
 import io.ktor.response.respond
 import io.ktor.response.respondRedirect
 import io.ktor.response.respondText
-import io.ktor.routing.get
-import io.ktor.routing.post
-import io.ktor.routing.route
-import io.ktor.routing.routing
+import io.ktor.routing.*
 import org.jetbrains.exposed.sql.Database
-
-
-private val loginInteractor = LoginInteractor()
-private val dataInteractor = DummyDataInteractor()
-
-private val answersInteractor = AnswersInteractor()
+import org.koin.ktor.ext.Koin
+import org.koin.ktor.ext.inject
 
 
 fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
@@ -39,6 +33,8 @@ fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
 @Suppress("unused")
 @kotlin.jvm.JvmOverloads
 fun Application.module(testing: Boolean = false) {
+
+    install(Koin) { modules(mainModule) }
 
     val tokenizer = LoginInteractor.KtorJWT(SECRET_JWT)
 
@@ -73,44 +69,52 @@ fun Application.module(testing: Boolean = false) {
         exception<ApplicationExceptions> { call.processError(it) }
     }
 
-    routing {
-        get("/") {
-            call.respondText(APP_NAME, contentType = ContentType.Text.Plain)
+    routing { installRoutes() }
+}
+
+private fun Routing.installRoutes() {
+    val loginInteractor = LoginInteractor()
+    val dataInteractor: DummyDataInteractor by inject()
+
+
+    get("/") {
+        call.respondText(APP_NAME, contentType = ContentType.Text.Plain)
+    }
+
+    get("/html") {
+        call.respondText(dataInteractor.getHtml(), contentType = ContentType.Text.Html)
+    }
+
+    post("/login") {
+        val post = call.receive<LoginInteractor.LoginRegister>()
+
+        if (loginInteractor.checkCredentials(post)) {
+            call.respondRedirect("/", permanent = false)
+        } else {
+            throw ApplicationExceptions.InvalidCredentialsException()
+        }
+    }
+
+    route("/data") {
+        get {
+            call.respond(mapOf("data" to synchronized(dataInteractor.getDataList()) {
+                dataInteractor.getDataList().toList()
+            }))
         }
 
-        post("/login") {
-            val post = call.receive<LoginInteractor.LoginRegister>()
-
-            if (loginInteractor.checkCredentials(post)) {
-                call.respond(mapOf("token" to tokenizer.sign(post.user)))
-                call.respondRedirect("/", permanent = false)
-            } else {
-                throw ApplicationExceptions.InvalidCredentialsException()
-            }
-        }
-
-        post("/sendAnswers") {
-            val jsonAnswers = call.receive<String>()
-
-            call.respondText(answersInteractor.processAnswers(jsonAnswers))
-        }
-
-        route("/data") {
-            get {
-                call.respond(mapOf("data" to synchronized(dataInteractor.getDataList()) {
-                    dataInteractor.getDataList().toList()
-                }))
-            }
-
-            authenticate {
-                post {
-                    val post = call.receive<DummyDataInteractor.PostData>()
-                    dataInteractor.putData(post.data.text)
-                    call.respond(mapOf("OK" to true))
-                }
+        authenticate {
+            post {
+                val post = call.receive<DummyDataInteractor.PostData>()
+                dataInteractor.putData(post.data.text)
+                call.respond(mapOf("OK" to true))
             }
         }
     }
+}
+
+
+private suspend fun ApplicationCall.respondCustom(questions: Any) {
+    respond(mapOf("questions" to questions))
 }
 
 private fun initDB() {

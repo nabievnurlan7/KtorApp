@@ -24,7 +24,12 @@ class LoginInteractor {
     )
 
     fun checkCredentials(post: LoginRegister): Boolean {
-        val user = users.getOrPut(post.user) { User(post.user, post.password) }
+        val user = users.getOrPut(post.user) {
+            User(
+                post.user,
+                post.password
+            )
+        }
         return user.password == post.password
     }
 }
